@@ -27,8 +27,8 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/bazaar"
 )
 
-func GetPackageREADME(repoURL, repoHash string) (ret string) {
-	ret = bazaar.GetPackageREADME(repoURL, repoHash, Conf.System.ID)
+func GetPackageREADME(repoURL, repoHash, packageType string) (ret string) {
+	ret = bazaar.GetPackageREADME(repoURL, repoHash, packageType)
 	return
 }
 
@@ -39,7 +39,7 @@ func BazaarPlugins() (plugins []*bazaar.Plugin) {
 		if plugin.Installed {
 			if plugin.Installed {
 				if pluginConf, err := bazaar.PluginJSON(plugin.Name); nil == err && nil != plugin {
-					if plugin.Version != pluginConf["version"].(string) {
+					if plugin.Version != pluginConf.Version {
 						plugin.Outdated = true
 					}
 				}
@@ -51,6 +51,15 @@ func BazaarPlugins() (plugins []*bazaar.Plugin) {
 
 func InstalledPlugins() (plugins []*bazaar.Plugin) {
 	plugins = bazaar.InstalledPlugins()
+
+	petals := getPetals()
+	for _, plugin := range plugins {
+		petal := getPetalByName(plugin.Name, petals)
+		if nil != petal {
+			plugin.Enabled = petal.Enabled
+			break
+		}
+	}
 	return
 }
 
@@ -69,6 +78,19 @@ func UninstallBazaarPlugin(pluginName string) error {
 	if nil != err {
 		return errors.New(fmt.Sprintf(Conf.Language(47), err.Error()))
 	}
+
+	petals := getPetals()
+	var tmp []*Petal
+	for i, petal := range petals {
+		if petal.Name != pluginName {
+			tmp = append(tmp, petals[i])
+		}
+	}
+	petals = tmp
+	if 1 > len(petals) {
+		petals = []*Petal{}
+	}
+	savePetals(petals)
 	return nil
 }
 
@@ -79,7 +101,7 @@ func BazaarWidgets() (widgets []*bazaar.Widget) {
 		if widget.Installed {
 			if widget.Installed {
 				if widgetConf, err := bazaar.WidgetJSON(widget.Name); nil == err && nil != widget {
-					if widget.Version != widgetConf["version"].(string) {
+					if widget.Version != widgetConf.Version {
 						widget.Outdated = true
 					}
 				}
@@ -119,7 +141,7 @@ func BazaarIcons() (icons []*bazaar.Icon) {
 			if installed == icon.Name {
 				icon.Installed = true
 				if themeConf, err := bazaar.IconJSON(icon.Name); nil == err {
-					if icon.Version != themeConf["version"].(string) {
+					if icon.Version != themeConf.Version {
 						icon.Outdated = true
 					}
 				}
@@ -170,7 +192,7 @@ func BazaarThemes() (ret []*bazaar.Theme) {
 			if installed == theme.Name {
 				theme.Installed = true
 				if themeConf, err := bazaar.ThemeJSON(theme.Name); nil == err {
-					theme.Outdated = theme.Version != themeConf["version"].(string)
+					theme.Outdated = theme.Version != themeConf.Version
 				}
 				theme.Current = theme.Name == Conf.Appearance.ThemeDark || theme.Name == Conf.Appearance.ThemeLight
 			}
@@ -231,7 +253,7 @@ func BazaarTemplates() (templates []*bazaar.Template) {
 		template.Installed = gulu.File.IsExist(filepath.Join(util.DataDir, "templates", template.Name))
 		if template.Installed {
 			if themeConf, err := bazaar.TemplateJSON(template.Name); nil == err && nil != themeConf {
-				if template.Version != themeConf["version"].(string) {
+				if template.Version != themeConf.Version {
 					template.Outdated = true
 				}
 			}

@@ -31,6 +31,8 @@ type TOperation =
     | "removeFlashcards"
 type TBazaarType = "templates" | "icons" | "widgets" | "themes" | "plugins"
 type TCardType = "doc" | "notebook" | "all"
+type TEventBus = "ws-main"
+
 declare module "blueimp-md5"
 
 interface Window {
@@ -50,6 +52,7 @@ interface Window {
 
     newWindow: {
         positionPDF(pathStr: string, page: string | number): void
+        switchTabById(id: string): void
     }
 
     Protyle: import("../protyle/method").default
@@ -269,6 +272,29 @@ interface IOperation {
 
 interface IObject {
     [key: string]: string;
+}
+
+declare interface ILayoutJSON extends ILayoutOptions {
+    instance?: string,
+    width?: string,
+    height?: string,
+    title?: string,
+    lang?: string
+    docIcon?: string
+    page?: string
+    path?: string
+    blockId?: string
+    icon?: string
+    rootId?: string
+    active?: boolean
+    pin?: boolean
+    data?: {
+        cardType: TCardType,
+        id: string,
+        title?: string
+    }
+    config?: ISearchOption
+    children?: ILayoutJSON[] | ILayoutJSON
 }
 
 declare interface IDockTab {
@@ -680,6 +706,10 @@ declare interface IMenu {
 }
 
 declare interface IBazaarItem {
+    enabled: boolean
+    preferredName: string
+    preferredDesc: string
+    iconURL: string
     readme: string
     stars: string
     author: string
@@ -701,5 +731,5 @@ declare interface IBazaarItem {
     hInstallSize: string
     hInstallDate: string
     hUpdated: string
-    fundingUrl: IObject
+    preferredFunding: string
 }

@@ -17,10 +17,9 @@
 package model
 
 import (
-	"crypto/sha1"
-	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/88250/gulu"
 	"github.com/siyuan-note/filelock"
@@ -31,7 +30,6 @@ import (
 
 // Petal represents a plugin's management status.
 type Petal struct {
-	ID      string `json:"id"`      // Plugin ID
 	Name    string `json:"name"`    // Plugin name
 	Enabled bool   `json:"enabled"` // Whether enabled
 
@@ -41,33 +39,127 @@ type Petal struct {
 }
 
 func SetPetalEnabled(name string, enabled bool) {
-	petals := []*Petal{}
-	petalDir := filepath.Join(util.DataDir, "storage", "petal")
-	confPath := filepath.Join(petalDir, "petals.json")
-	data, err := filelock.ReadFile(confPath)
-	if nil != err {
-		logging.LogErrorf("read petal file [%s] failed: %s", confPath, err)
-		return
-	}
-
-	if err = gulu.JSON.UnmarshalJSON(data, &petals); nil != err {
-		logging.LogErrorf("unmarshal petals failed: %s", err)
-		return
-	}
+	petals := getPetals()
 
 	plugins := bazaar.InstalledPlugins()
-	for _, plugin := range plugins {
-		id := hash(plugin.URL)
-		petal := getPetalByID(id, petals)
-		if nil == petal {
+	var plugin *bazaar.Plugin
+	for _, p := range plugins {
+		if p.Name == name {
+			plugin = p
+			break
+		}
+	}
+	if nil == plugin {
+		logging.LogErrorf("plugin [%s] not found", name)
+		return
+	}
+
+	petal := getPetalByName(plugin.Name, petals)
+	if nil == petal {
+		petal = &Petal{
+			Name:    plugin.Name,
+			Enabled: enabled,
+		}
+		petals = append(petals, petal)
+	} else {
+		petal.Enabled = enabled
+	}
+
+	savePetals(petals)
+}
+
+func LoadPetals() (ret []*Petal) {
+	ret = []*Petal{}
+	petals := getPetals()
+	for _, petal := range petals {
+		if !petal.Enabled {
 			continue
 		}
 
-		petal.Enabled = enabled
-		break
-	}
+		pluginDir := filepath.Join(util.DataDir, "plugins", petal.Name)
+		jsPath := filepath.Join(pluginDir, "index.js")
+		if !gulu.File.IsExist(jsPath) {
+			logging.LogErrorf("plugin [%s] js not found", petal.Name)
+			continue
+		}
 
-	if data, err = gulu.JSON.MarshalIndentJSON(petals, "", "\t"); nil != err {
+		data, err := filelock.ReadFile(jsPath)
+		if nil != err {
+			logging.LogErrorf("read plugin [%s] js failed: %s", petal.Name, err)
+			continue
+		}
+		petal.JS = string(data)
+
+		cssPath := filepath.Join(pluginDir, "index.css")
+		if gulu.File.IsExist(cssPath) {
+			data, err := filelock.ReadFile(cssPath)
+			if nil != err {
+				logging.LogErrorf("read plugin [%s] css failed: %s", petal.Name, err)
+			} else {
+				petal.CSS = string(data)
+			}
+		}
+
+		i18nDir := filepath.Join(pluginDir, "i18n")
+		if gulu.File.IsDir(i18nDir) {
+			langJSONs, err := os.ReadDir(i18nDir)
+			if nil != err {
+				logging.LogErrorf("read plugin [%s] i18n failed: %s", petal.Name, err)
+			} else {
+				preferredLang := Conf.Lang + ".json"
+				foundPreferredLang := false
+				foundEnUS := false
+				foundZhCN := false
+				for _, langJSON := range langJSONs {
+					if langJSON.Name() == preferredLang {
+						foundPreferredLang = true
+						break
+					}
+					if langJSON.Name() == "en_US.json" {
+						foundEnUS = true
+					}
+					if langJSON.Name() == "zh_CN.json" {
+						foundZhCN = true
+					}
+				}
+
+				if !foundPreferredLang {
+					if foundEnUS {
+						preferredLang = "en_US.json"
+					} else if foundZhCN {
+						preferredLang = "zh_CN.json"
+					} else {
+						preferredLang = langJSONs[0].Name()
+					}
+				}
+
+				data, err := filelock.ReadFile(filepath.Join(i18nDir, preferredLang))
+				if nil != err {
+					logging.LogErrorf("read plugin [%s] i18n failed: %s", petal.Name, err)
+				} else {
+					petal.I18n = map[string]interface{}{}
+					if err = gulu.JSON.UnmarshalJSON(data, &petal.I18n); nil != err {
+						logging.LogErrorf("unmarshal plugin [%s] i18n failed: %s", petal.Name, err)
+					}
+				}
+			}
+		}
+
+		ret = append(ret, petal)
+	}
+	return
+}
+
+var petalsStoreLock = sync.Mutex{}
+
+func savePetals(petals []*Petal) {
+	petalsStoreLock.Lock()
+	defer petalsStoreLock.Unlock()
+
+	petalDir := filepath.Join(util.DataDir, "storage", "petal")
+	confPath := filepath.Join(petalDir, "petals.json")
+	data, err := gulu.JSON.MarshalIndentJSON(petals, "", "\t")
+	if nil != err {
 		logging.LogErrorf("marshal petals failed: %s", err)
 		return
 	}
@@ -77,9 +169,11 @@ func SetPetalEnabled(name string, enabled bool) {
 	}
 }
 
-func LoadPetals() (ret []*Petal) {
-	ret = []*Petal{}
+func getPetals() (ret []*Petal) {
+	petalsStoreLock.Lock()
+	defer petalsStoreLock.Unlock()
 
+	ret = []*Petal{}
 	petalDir := filepath.Join(util.DataDir, "storage", "petal")
 	if err := os.MkdirAll(petalDir, 0755); nil != err {
 		logging.LogErrorf("create petal dir [%s] failed: %s", petalDir, err)
@@ -110,61 +204,15 @@ func LoadPetals() (ret []*Petal) {
 		logging.LogErrorf("unmarshal petals failed: %s", err)
 		return
 	}
-
-	plugins := bazaar.InstalledPlugins()
-	for _, plugin := range plugins {
-		id := hash(plugin.URL)
-		petal := getPetalByID(id, ret)
-		if nil == petal {
-			continue
-		}
-
-		pluginDir := filepath.Join(util.DataDir, "plugins", plugin.Name)
-		data, err := filelock.ReadFile(filepath.Join(pluginDir, "index.js"))
-		if nil != err {
-			logging.LogErrorf("read plugin [%s] js failed: %s", plugin.Name, err)
-			continue
-		}
-		petal.JS = string(data)
-
-		cssPath := filepath.Join(pluginDir, "index.css")
-		if gulu.File.IsExist(cssPath) {
-			data, err := filelock.ReadFile(cssPath)
-			if nil != err {
-				logging.LogErrorf("read plugin [%s] css failed: %s", plugin.Name, err)
-			} else {
-				petal.CSS = string(data)
-			}
-		}
-
-		i18nPath := filepath.Join(pluginDir, "i18n", Conf.Lang)
-		if gulu.File.IsExist(i18nPath) {
-			data, err := filelock.ReadFile(i18nPath)
-			if nil != err {
-				logging.LogErrorf("read plugin [%s] i18n failed: %s", plugin.Name, err)
-			} else {
-				petal.I18n = map[string]interface{}{}
-				if err = gulu.JSON.UnmarshalJSON(data, &petal.I18n); nil != err {
-					logging.LogErrorf("unmarshal plugin [%s] i18n failed: %s", plugin.Name, err)
-				}
-			}
-		}
-
-		ret = append(ret, petal)
-	}
 	return
 }
 
-func getPetalByID(id string, petals []*Petal) (ret *Petal) {
+func getPetalByName(name string, petals []*Petal) (ret *Petal) {
 	for _, p := range petals {
-		if id == p.ID {
+		if name == p.Name {
 			ret = p
 			break
 		}
 	}
 	return
-}
-
-func hash(str string) string {
-	return fmt.Sprintf("%x", sha1.Sum([]byte(str)))
 }
