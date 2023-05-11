@@ -39,7 +39,7 @@ interface Window {
     dataLayer: any[]
     siyuan: ISiyuan
     webkit: any
-    html2canvas: (element: Element) => Promise<any>;
+    html2canvas: (element: Element, opitons: {useCORS: boolean}) => Promise<any>;
     JSAndroid: {
         returnDesktop(): void
         openExternal(url: string): void
@@ -183,6 +183,9 @@ interface INotebook {
     closed: boolean
     icon: string
     sort: number
+    dueFlashcardCount?: string;
+    newFlashcardCount?: string;
+    flashcardCount?: string;
     sortMode: number
 }
 
@@ -288,11 +291,8 @@ declare interface ILayoutJSON extends ILayoutOptions {
     rootId?: string
     active?: boolean
     pin?: boolean
-    data?: {
-        cardType: TCardType,
-        id: string,
-        title?: string
-    }
+    customModelData?: any
+    customModelType?: string
     config?: ISearchOption
     children?: ILayoutJSON[] | ILayoutJSON
 }
@@ -307,7 +307,13 @@ declare interface IDockTab {
 
 declare interface IOpenFileOptions {
     searchData?: ISearchOption, // 搜索必填
-    customData?: any, // card 必填
+    // card 和自定义页签 必填
+    custom?: {
+        title: string,
+        icon: string,
+        data?: any
+        fn?: (options: { tab: import("../layout/Tab").Tab, data: any }) => import("../layout/Model").Model,
+    }
     assetPath?: string, // asset 必填
     fileName?: string, // file 必填
     rootIcon?: string, // 文档图标
@@ -388,12 +394,12 @@ declare interface IEditor {
 }
 
 declare interface IWebSocketData {
-    cmd: string
+    cmd?: string
     callback?: string
-    data: any
+    data?: any
     msg: string
     code: number
-    sid: string
+    sid?: string
 }
 
 declare interface IAppearance {
@@ -545,6 +551,7 @@ declare interface IConfig {
         name: boolean
         alias: boolean
         memo: boolean
+        indexAssetPath: boolean
         ial: boolean
         limit: number
         caseSensitive: boolean
@@ -632,6 +639,9 @@ declare interface IFile {
     hMtime: string;
     hCtime: string;
     hSize: string;
+    dueFlashcardCount?: string;
+    newFlashcardCount?: string;
+    flashcardCount?: string;
     id: string;
     count: number;
     subFileCount: number;
@@ -709,8 +719,8 @@ declare interface IBazaarItem {
     enabled: boolean
     preferredName: string
     preferredDesc: string
+    preferredReadme: string
     iconURL: string
-    readme: string
     stars: string
     author: string
     updated: string

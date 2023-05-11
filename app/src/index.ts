@@ -166,12 +166,12 @@ export class App {
             getLocalStorage(() => {
                 fetchGet(`/appearance/langs/${window.siyuan.config.appearance.lang}.json?v=${Constants.SIYUAN_VERSION}`, (lauguages) => {
                     window.siyuan.languages = lauguages;
-                    window.siyuan.menus = new Menus();
+                    window.siyuan.menus = new Menus(siyuanApp);
                     bootSync();
                     fetchPost("/api/setting/getCloudUser", {}, userResponse => {
                         window.siyuan.user = userResponse.data;
                         loadPlugins(siyuanApp);
-                        onGetConfig(response.data.start);
+                        onGetConfig(response.data.start, siyuanApp);
                         account.onSetaccount();
                         resizeDrag();
                         setTitle(window.siyuan.languages.siyuanNote);

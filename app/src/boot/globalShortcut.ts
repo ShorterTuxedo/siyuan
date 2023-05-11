@@ -1,4 +1,4 @@
-import {isCtrl, isMac, setStorageVal, updateHotkeyTip, writeText} from "../protyle/util/compatibility";
+import {isCtrl, isMac, updateHotkeyTip, writeText} from "../protyle/util/compatibility";
 import {matchHotKey} from "../protyle/util/hotKey";
 import {openSearch} from "../search/spread";
 import {
@@ -43,7 +43,7 @@ import {editor} from "../config/editor";
 import {hintMoveBlock} from "../protyle/hint/extend";
 import {Backlink} from "../layout/dock/Backlink";
 /// #if !BROWSER
-import {webFrame} from "electron";
+import {setZoom} from "../layout/topBar";
 /// #endif
 import {openHistory} from "../history/history";
 import {openCard, openCardByData} from "../card/openCard";
@@ -53,6 +53,7 @@ import {reloadProtyle} from "../protyle/util/reload";
 import {fullscreen} from "../protyle/breadcrumb/action";
 import {setPadding} from "../protyle/ui/initUI";
 import {openRecentDocs} from "../business/openRecentDocs";
+import {App} from "../index";
 
 const getRightBlock = (element: HTMLElement, x: number, y: number) => {
     let index = 1;
@@ -95,7 +96,7 @@ const switchDialogEvent = (event: MouseEvent, switchDialog: Dialog) => {
     }
 };
 
-export const globalShortcut = () => {
+export const globalShortcut = (app: App) => {
     document.body.addEventListener("mouseleave", () => {
         if (window.siyuan.layout.leftDock) {
             window.siyuan.layout.leftDock.hideDock();
@@ -397,14 +398,19 @@ export const globalShortcut = () => {
         if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey &&
             !["INPUT", "TEXTAREA"].includes(target.tagName) &&
             ["0", "1", "2", "3", "4", "j", "k", "l", ";", "s", " ", "p"].includes(event.key.toLowerCase())) {
-            const openCardDialog = window.siyuan.dialogs.find(item => {
+            let cardElement: Element;
+            window.siyuan.dialogs.find(item => {
                 if (item.element.getAttribute("data-key") === window.siyuan.config.keymap.general.riffCard.custom) {
+                    cardElement = item.element;
                     return true;
                 }
             });
-            if (openCardDialog) {
+            if (!cardElement) {
+                cardElement = document.querySelector(`.layout__wnd--active div[data-key="${window.siyuan.config.keymap.general.riffCard.custom}"]:not(.fn__none)`);
+            }
+            if (cardElement) {
                 event.preventDefault();
-                openCardDialog.element.dispatchEvent(new CustomEvent("click", {detail: event.key.toLowerCase()}));
+                cardElement.dispatchEvent(new CustomEvent("click", {detail: event.key.toLowerCase()}));
                 return;
             }
         }
@@ -569,39 +575,17 @@ export const globalShortcut = () => {
 
         /// #if !BROWSER
         if (matchHotKey("⌘=", event) && !hasClosestByClassName(target, "pdf__outer")) {
-            Constants.SIZE_ZOOM.find((item, index) => {
-                if (item === window.siyuan.storage[Constants.LOCAL_ZOOM]) {
-                    window.siyuan.storage[Constants.LOCAL_ZOOM] = Constants.SIZE_ZOOM[index + 1] || 3;
-                    webFrame.setZoomFactor(window.siyuan.storage[Constants.LOCAL_ZOOM]);
-                    if (!isTabWindow) {
-                        setStorageVal(Constants.LOCAL_ZOOM, window.siyuan.storage[Constants.LOCAL_ZOOM]);
-                    }
-                    return true;
-                }
-            });
+            setZoom("zoomIn");
             event.preventDefault();
             return;
         }
         if (matchHotKey("⌘0", event)) {
-            webFrame.setZoomFactor(1);
-            window.siyuan.storage[Constants.LOCAL_ZOOM] = 1;
-            if (!isTabWindow) {
-                setStorageVal(Constants.LOCAL_ZOOM, 1);
-            }
+            setZoom("restore");
             event.preventDefault();
             return;
         }
         if (matchHotKey("⌘-", event) && !hasClosestByClassName(target, "pdf__outer")) {
-            Constants.SIZE_ZOOM.find((item, index) => {
-                if (item === window.siyuan.storage[Constants.LOCAL_ZOOM]) {
-                    window.siyuan.storage[Constants.LOCAL_ZOOM] = Constants.SIZE_ZOOM[index - 1] || 0.25;
-                    webFrame.setZoomFactor(window.siyuan.storage[Constants.LOCAL_ZOOM]);
-                    if (!isTabWindow) {
-                        setStorageVal(Constants.LOCAL_ZOOM, window.siyuan.storage[Constants.LOCAL_ZOOM]);
-                    }
-                    return true;
-                }
-            });
+            setZoom("zoomOut");
             event.preventDefault();
             return;
         }
@@ -630,7 +614,7 @@ export const globalShortcut = () => {
             return;
         }
         if (!isTabWindow && !window.siyuan.config.readonly && matchHotKey(window.siyuan.config.keymap.general.config.custom, event)) {
-            openSetting();
+            openSetting(app);
             event.preventDefault();
             return;
         }
